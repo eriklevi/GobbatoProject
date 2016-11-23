@@ -102,6 +102,7 @@ Heuristic::Heuristic(string path){
             }
         }
     }
+
 }
 
 void Heuristic::solveFast(vector<double>& stat, int timeLimit) {
@@ -150,11 +151,11 @@ std::vector<GeneratedVector>* Heuristic::buildInitializationVector () {
     int indexForApp = 0;
 
     for (int i=0; i<nTimeSteps; i++) {
-        for (int j=0; i<nCustomerTypes; j++) {
+        for (int j=0; j<nCustomerTypes; j++) {
             for (int k=0; k<nCells; k++) {
-                if (problem.usersCell[i][j][k] != 0) {
+                if (problem.usersCell[k][j][i] != 0) {
                     GeneratedVector data;
-                    data.value = problem.usersCell[i][j][k];
+                    data.value = problem.usersCell[k][j][i];
                     data.index = indexForApp;
                     appVector->push_back(data);
                 }
@@ -183,54 +184,140 @@ struct StartingSolutions Heuristic::GenerateStartingSolutions(std::vector<Genera
         }
     }
 
+    std::cout << "Fino a qui finita" << std::endl;
 
     int sizeAppVector = appVector->size();
 
-    for (int i = 0; i<nCells; i++) {
-        // For each cell
-        while (myActivities->at(i) != 0) {
-            //Generate the random number that select who to send
-            std::random_device rd; // obtain a random number from hardware
-            std::mt19937 eng(rd()); // seed the generator
-            std::uniform_int_distribution<> distr(0, sizeAppVector); // define the range
-            int selected = distr(eng);
-            int index = appVector->at(selected).index;
+    try {
+        for (int i = 0; i<nCells; i++) {
+            // For each cell
+            while (myActivities->at(i) != 0) {
+                //Generate the random number that select who to send
+                std::random_device rd; // obtain a random number from hardware
+                std::mt19937 eng(rd()); // seed the generator
+                sizeAppVector = appVector->size();
+                std::uniform_int_distribution<> distr(0, sizeAppVector); // define the range
+                int selected = distr(eng);
+                int index = appVector->at(selected).index;
+
+                std::cout << selected << " " << index << std::endl;
+                // From index find j t m (starting cell, timestamp, user)
+                int j = index%nCells;
+                if (j==i) break;
+                int t = index/(nCells)%nTimeSteps;
+                int m = index/(nCells*nTimeSteps);
+
+                std::cout << i << " " << j << " " << m << " " << t << " " << appVector->at(selected).value << std::endl;
+                //Another Random number to decide how many to choose
+
+                std::uniform_int_distribution<> distr1(1, myActivities->at(i)); // define the range
+                int nPeople = distr1(eng);
+
+                if (appVector->at(selected).value > (nPeople * (m+1))) {
+                    appVector->at(selected).value -= myActivities->at(i);
+                    myActivities->at(i) -= nPeople * (m+1);
+                    mySolution.startingSolution[i][j][m][t] += nPeople * (m+1);
+                    mySolution.ObjectiveFunction += problem.costs[i][j][m][t] * nPeople;
+                    std::cout << "Debug" << std::endl;
 
 
-            // From index find j t m (starting cell, timestamp, user)
-            int j = index%nCells;
-            int t = index/(nCells*nCustomerTypes);
-            int m = index/(nCells*nTimeSteps);
+                }
+                else {
+                    myActivities->at(i) -= appVector->at(selected).value * (m+1);
+                    std::cout << appVector ->size() << std::endl;
+                    mySolution.startingSolution[i][j][m][t] += appVector->at(selected).value * (m+1);
+                    mySolution.ObjectiveFunction += problem.costs[i][j][m][t] * appVector->at(selected).value;
+                    appVector->erase(appVector->begin() + selected);
+                    std::cout << appVector -> size() << std::endl;
 
-
-            //Another Random number to decide how many to choose
-
-            std::uniform_int_distribution<> distr1(1, myActivities->at(index)); // define the range
-            int nPeople = distr1(eng);
-
-            if (appVector->at(selected).value > nPeople) {
-                appVector->at(selected).value -= myActivities->at(index);
-                myActivities->at(i) -= nPeople;
-                mySolution.startingSolution[i][j][m][t] += nPeople;
-                mySolution.ObjectiveFunction += problem.costs[i][j][m][t] * nPeople;
+                }
 
 
             }
-            else {
-                myActivities->at(i) -= appVector->at(selected).value;
-                appVector->erase(appVector->begin() + selected);
-                mySolution.startingSolution[i][j][m][t] += appVector->at(selected).value;
-                mySolution.ObjectiveFunction += problem.costs[i][j][m][t] * appVector->at(selected).value;
-
-            }
-
-
         }
+    }
+    catch (std::out_of_range& e) {
+        std::cout << e.what() << std::endl;
     }
 
     return mySolution;
 
 }
+
+struct StartingSolutions Heuristic::GenerateChildren(struct StartingSolutions ss) {
+
+    int Nvolte = nCells*nCells*0.4;
+    std::random_device rd; // obtain a random number from hardware
+    std::mt19937 eng(rd()); // seed the generator
+
+    for (int k = 0; k < Nvolte; k++) {
+        std::uniform_int_distribution<> distr(0, nCells); // define the range
+        int i = distr(eng);
+        int j = distr(eng);
+        if ( i == j ) break;
+
+        for (int h = 0 ; h< 20; h++) {
+            std::uniform_int_distribution<> distr1 (0, nCustomerTypes);
+            std::uniform_int_distribution<> distr2 (0, nTimeSteps);
+            // Genero gli indici m1 t1 e m2 t2 per i valori da swappare
+
+            int m1 = distr1(eng);
+            int t1 = distr2(eng);
+            int m2 = distr1(eng);
+            int t2 = distr2(eng);
+            if (ss.startingSolution[i][j][m1][t1] == ss.startingSolution[i][j][m2][t2]) break;
+            int Sum = 0;
+            int variation = ss.startingSolution[i][j][m1][t1] - ss.startingSolution[i][j][m2][t2];
+
+            if (variation>0) {
+                //Swappo
+                int app = ss.startingSolution[i][j][m2][t2] ;
+                ss.startingSolution[i][j][m2][t2] = ss.startingSolution[i][j][m1][t1];
+                ss.startingSolution[i][j][m1][t1] = app;
+                //Controllo la nuova somma
+                for (int j1=0 ; j1 < nCells ; j1++) {
+                    Sum += ss.startingSolution[i][j1][m2][t2];
+                }
+                if (Sum > problem.usersCell[i][m2][t2]) {
+                    // Non va bene, rollback
+                    app = ss.startingSolution[i][j][m2][t2] ;
+                    ss.startingSolution[i][j][m2][t2] = ss.startingSolution[i][j][m1][t1];
+                    ss.startingSolution[i][j][m1][t1] = app;
+                } else {
+                    // Va bene, aggiorno l'objF
+                    ss.ObjectiveFunction -= variation*problem.costs[i][j][m1][t1];
+                    ss.ObjectiveFunction += variation*problem.costs[i][j][m2][t2];
+
+                }
+            } else { // m2 t2 contiene l'elemento maggiore
+                int app = ss.startingSolution[i][j][m2][t2] ;
+                ss.startingSolution[i][j][m2][t2] = ss.startingSolution[i][j][m1][t1];
+                ss.startingSolution[i][j][m1][t1] = app;
+                //Controllo la nuova somma
+                for (int j1=0 ; j1 < nCells ; j1++) {
+                    Sum += ss.startingSolution[i][j1][m1][t1];
+                }
+                if (Sum > problem.usersCell[i][m1][t1]) {
+                    // Non va bene, rollback
+                    app = ss.startingSolution[i][j][m2][t2] ;
+                    ss.startingSolution[i][j][m2][t2] = ss.startingSolution[i][j][m1][t1];
+                    ss.startingSolution[i][j][m1][t1] = app;
+                } else {
+                    // Va bene, aggiorno l'objF
+                    ss.ObjectiveFunction -= variation*problem.costs[i][j][m2][t2];
+                    ss.ObjectiveFunction += variation*problem.costs[i][j][m1][t1];
+
+                }
+            }
+
+        }
+
+
+    }
+
+
+}
+
 
 void Heuristic::writeKPI(string path, string instanceName, vector<double> stat){
     if (!hasSolution)

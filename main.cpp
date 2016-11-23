@@ -1,6 +1,7 @@
 #include <list>
 #include <iostream>
 #include <string.h>
+#include <algorithm>
 #include "utils.h"
 #include "heuristic.h"
 
@@ -40,12 +41,39 @@ int main(int argc,char *argv[]){
 		Heuristic _heuristic(_inPath);
 		// Solve the problem
 		vector<double> stat;
+        bool tempo = true;
         std::vector<StartingSolutions>* SoluzioniIniziali = new std::vector <StartingSolutions> ();
         std::vector<GeneratedVector>* appVector = _heuristic.buildInitializationVector();
         int QuanteSoluzioniIniziali = 100;
+        std::cout << "Inizializzazione finita!!" << std::endl;
+
         for (int i = 0 ; i<QuanteSoluzioniIniziali; i++)
             SoluzioniIniziali->push_back(_heuristic.GenerateStartingSolutions(appVector));
 
+        std::sort(SoluzioniIniziali->begin(), SoluzioniIniziali->end(),
+                  [] (const StartingSolutions& a, const StartingSolutions& b) -> bool {
+                return a.ObjectiveFunction > b.ObjectiveFunction;
+            } );
+        std::vector<StartingSolutions>* VettoreFigli = new std::vector <StartingSolutions> ();
+
+        while (tempo) {
+
+            for (int i =0; i< QuanteSoluzioniIniziali/2; i++) {
+                VettoreFigli->push_back(_heuristic.GenerateChildren(SoluzioniIniziali->at(i)));
+                VettoreFigli->push_back(_heuristic.GenerateChildren(SoluzioniIniziali->at(i)));
+            }
+            SoluzioniIniziali = VettoreFigli;
+            std::sort(SoluzioniIniziali->begin(), SoluzioniIniziali->end(),
+                      [] (const StartingSolutions& a, const StartingSolutions& b) -> bool {
+                          return a.ObjectiveFunction > b.ObjectiveFunction;
+                      } );
+            tempo = false;
+        }
+
+        StartingSolutions SoluzioneFinale = SoluzioniIniziali->at(0);
+
+
+        return 1;
 
 		_heuristic.solveFast(stat);
 		_heuristic.getStatSolution(stat);
