@@ -170,9 +170,13 @@ std::vector<GeneratedVector>* Heuristic::buildInitializationVector () {
 
 
 struct StartingSolutions Heuristic::GenerateStartingSolutions(std::vector<GeneratedVector>* appVector) {
+
+    int i1, m1, j1;
+
     std::vector<int>* myActivities = new std::vector<int> ();
     myActivities->assign(problem.activities, problem.activities + nCells);
     struct StartingSolutions mySolution;
+    mySolution.noZero = new std::vector<NoZeroVector> ();
     mySolution.startingSolution = new int***[nCells];
     for (int i = 0; i < this->nCells; i++) {
         mySolution.startingSolution[i] = new int**[nCells];
@@ -180,94 +184,151 @@ struct StartingSolutions Heuristic::GenerateStartingSolutions(std::vector<Genera
             mySolution.startingSolution[i][j] = new int*[nCustomerTypes];
             for (int m = 0; m < this->nCustomerTypes; m++) {
                 mySolution.startingSolution[i][j][m] = new int[nTimeSteps];
+                for (int t = 0; t < this->nTimeSteps; t++)
+                    mySolution.startingSolution[i][j][m][t] = 0;
             }
         }
     }
+    mySolution.ObjectiveFunction = 0;
 
-    std::cout << "Fino a qui finita" << std::endl;
+    //std::cout << "Fino a qui finita" << std::endl;
 
     int sizeAppVector = appVector->size();
+    std::random_device rd; // obtain a random number from hardware
+    std::mt19937 eng(rd()); // seed the generator
 
     try {
         for (int i = 0; i<nCells; i++) {
             // For each cell
-            while (myActivities->at(i) != 0) {
+            while (myActivities->at(i) > 0) {
                 //Generate the random number that select who to send
-                std::random_device rd; // obtain a random number from hardware
-                std::mt19937 eng(rd()); // seed the generator
+
                 sizeAppVector = appVector->size();
-                std::uniform_int_distribution<> distr(0, sizeAppVector); // define the range
+                std::uniform_int_distribution<> distr(0, sizeAppVector -1); // define the range
                 int selected = distr(eng);
                 int index = appVector->at(selected).index;
 
-                std::cout << selected << " " << index << std::endl;
                 // From index find j t m (starting cell, timestamp, user)
                 int j = index%nCells;
                 if (j==i) break;
                 int t = index/(nCells)%nTimeSteps;
                 int m = index/(nCells*nTimeSteps);
 
-                std::cout << i << " " << j << " " << m << " " << t << " " << appVector->at(selected).value << std::endl;
                 //Another Random number to decide how many to choose
 
                 std::uniform_int_distribution<> distr1(1, myActivities->at(i)); // define the range
-                int nPeople = distr1(eng);
+                int nPeople = 1;
 
-                if (appVector->at(selected).value > (nPeople * (m+1))) {
-                    appVector->at(selected).value -= myActivities->at(i);
+
+                if (appVector->at(selected).value > (nPeople)) {
+                    appVector->at(selected).value -= nPeople;
                     myActivities->at(i) -= nPeople * (m+1);
-                    mySolution.startingSolution[i][j][m][t] += nPeople * (m+1);
-                    mySolution.ObjectiveFunction += problem.costs[i][j][m][t] * nPeople;
-                    std::cout << "Debug" << std::endl;
+                    mySolution.startingSolution[j][i][m][t] += nPeople;
+                    mySolution.ObjectiveFunction += problem.costs[j][i][m][t] * nPeople;
+                    NoZeroVector nzv;
+                    nzv.i = j;
+                    nzv.j = i;
+                    nzv.m = m;
+                    nzv.t = t;
+                    std::cout << "J : " << i << std::endl;
+                    int flag = 0;
+                    for (int i = 0; i<mySolution.noZero->size(); i++) {
+                        if (mySolution.noZero->at(i).i == i && mySolution.noZero->at(i).j==j
+                            && mySolution.noZero->at(i).t == t && mySolution.noZero->at(i).m == m) flag = 1;
 
+                    }
+
+                    if (flag == 0) {
+
+                        mySolution.noZero->push_back(nzv);
+                    }
 
                 }
                 else {
-                    myActivities->at(i) -= appVector->at(selected).value * (m+1);
-                    std::cout << appVector ->size() << std::endl;
-                    mySolution.startingSolution[i][j][m][t] += appVector->at(selected).value * (m+1);
-                    mySolution.ObjectiveFunction += problem.costs[i][j][m][t] * appVector->at(selected).value;
+                    //controllo sul valore di appvector
+                    myActivities->at(i) -= (appVector->at(selected).value) * (m+1);
+                    mySolution.startingSolution[j][i][m][t] += (appVector->at(selected).value);
+                    mySolution.ObjectiveFunction += problem.costs[j][i][m][t] * appVector->at(selected).value;
                     appVector->erase(appVector->begin() + selected);
-                    std::cout << appVector -> size() << std::endl;
+                    NoZeroVector nzv;
+                    nzv.i = j;
+                    nzv.j = i;
+                    nzv.m = m;
+                    nzv.t = t;
 
+                    int flag = 0;
+                    for (int i = 0; i<mySolution.noZero->size(); i++) {
+                        if (mySolution.noZero->at(i).i == i && mySolution.noZero->at(i).j==j
+                            && mySolution.noZero->at(i).t == t && mySolution.noZero->at(i).m == m) flag = 1;
+
+                    }
+
+                    if (flag == 0)   mySolution.noZero->push_back(nzv);
                 }
 
-
             }
+
         }
     }
     catch (std::out_of_range& e) {
         std::cout << e.what() << std::endl;
-    }
 
+    }
+    int divzero = 0;
+    for (int m = 0; m < nCustomerTypes; m++) {
+        for (int t = 0; t < nTimeSteps; t++) {
+            for (int i = 0; i < nCells; i++) {
+                for (int j = 0; j < nCells; j++) {
+                    if (mySolution.startingSolution[i][j][m][t] != 0) divzero++;
+                }
+            }
+        }
+    }
+    std::cout << "Elementi diversi da zero : " << divzero << std::endl;
     return mySolution;
 
 }
 
 struct StartingSolutions Heuristic::GenerateChildren(struct StartingSolutions ss) {
-
     int Nvolte = nCells*nCells*0.4;
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 eng(rd()); // seed the generator
 
     for (int k = 0; k < Nvolte; k++) {
-        std::uniform_int_distribution<> distr(0, nCells); // define the range
-        int i = distr(eng);
-        int j = distr(eng);
-        if ( i == j ) break;
+        std::uniform_int_distribution<> distr3 (0, ss.noZero->size()-1);
+        int index = distr3(eng);
 
-        for (int h = 0 ; h< 20; h++) {
-            std::uniform_int_distribution<> distr1 (0, nCustomerTypes);
-            std::uniform_int_distribution<> distr2 (0, nTimeSteps);
+        int i = ss.noZero->at(index).i;
+        int j = ss.noZero->at(index).j;
+
+        if (this->problem.activities[j] == 0) {
+            std::cout << " activities[j] equals to 0 : "  << j << std::endl;
+            continue;
+        }
+
+        if ( i == j ) {
+            std::cout << " i equal to j" << std::endl;
+            continue;
+        }
+
+        for (int h = 0 ; h< nTimeSteps * nCustomerTypes *2; h++) {
+            std::uniform_int_distribution<> distr1 (0, nCustomerTypes-1);
+            std::uniform_int_distribution<> distr2 (0, nTimeSteps-1);
+
             // Genero gli indici m1 t1 e m2 t2 per i valori da swappare
-
             int m1 = distr1(eng);
             int t1 = distr2(eng);
-            int m2 = distr1(eng);
-            int t2 = distr2(eng);
-            if (ss.startingSolution[i][j][m1][t1] == ss.startingSolution[i][j][m2][t2]) break;
+            int m2 = ss.noZero->at(index).m;
+            int t2 = ss.noZero->at(index).t;
+
+            std::cout << m1 << " " << t1 << " " << m2 << " " << t2 << " " << i << " " << j << std::endl;
+            std::cout << ss.startingSolution[i][j][m1][t1] << " " << ss.startingSolution[i][j][m2][t2] << std::endl;
+
+            if (ss.startingSolution[i][j][m1][t1] == ss.startingSolution[i][j][m2][t2]) continue;
             int Sum = 0;
             int variation = ss.startingSolution[i][j][m1][t1] - ss.startingSolution[i][j][m2][t2];
+
+            std::cout << "Variation : " << variation << std::endl;
 
             if (variation>0) {
                 //Swappo
@@ -287,7 +348,6 @@ struct StartingSolutions Heuristic::GenerateChildren(struct StartingSolutions ss
                     // Va bene, aggiorno l'objF
                     ss.ObjectiveFunction -= variation*problem.costs[i][j][m1][t1];
                     ss.ObjectiveFunction += variation*problem.costs[i][j][m2][t2];
-
                 }
             } else { // m2 t2 contiene l'elemento maggiore
                 int app = ss.startingSolution[i][j][m2][t2] ;
@@ -306,16 +366,10 @@ struct StartingSolutions Heuristic::GenerateChildren(struct StartingSolutions ss
                     // Va bene, aggiorno l'objF
                     ss.ObjectiveFunction -= variation*problem.costs[i][j][m2][t2];
                     ss.ObjectiveFunction += variation*problem.costs[i][j][m1][t1];
-
                 }
             }
-
         }
-
-
     }
-
-
 }
 
 

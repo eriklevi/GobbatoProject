@@ -11,6 +11,11 @@
 #include <map>
 
 using namespace std;
+
+struct NoZeroVector {
+    int i, j, m, t;
+
+};
 struct GeneratedVector {
     int index;
     int value;
@@ -20,7 +25,9 @@ struct GeneratedVector {
 struct StartingSolutions {
     int**** startingSolution;
     int ObjectiveFunction;
+    std::vector<NoZeroVector>* noZero;
 };
+
 struct Data {
     /**
      * The costs ijkt
@@ -132,6 +139,7 @@ public:
 
     struct StartingSolutions GenerateStartingSolutions(std::vector<GeneratedVector>* appVector);
     std::vector<GeneratedVector>* buildInitializationVector ();
+    struct StartingSolutions GenerateChildren (struct StartingSolutions a);
 
 };
 
